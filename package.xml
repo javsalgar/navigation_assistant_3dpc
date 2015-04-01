@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package>
+  <name>navigation_assistant_3dpc</name>
+  <version>0.5.0</version>
+
+  <description>Navigation assistant based on joystick commands</description>
+
+  <url type="website">https://github.com/javsalgar/navigation_assistant_3dpc</url>
+  <url type="bugtracker">https://github.com/javsalgar/navigation_assistant_3dpc/issues</url>
+
+  <author email="jsalmeron2@us.es">Javier J. Salmeron-Garcia</author>
+  <maintainer email="jsalmeron2@us.es">Javier J. Salmeron-Garcia</maintainer>
+
+  <license>GPL</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>pcl</build_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>geometry_msgs</run_depend>
+  <run_depend>pcl</run_depend>
+
+</package>
