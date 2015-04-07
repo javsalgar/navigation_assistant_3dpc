@@ -12,8 +12,6 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(PCL REQUIRED QUIET COMPONENTS common)
 
-include_directories(${PCL_INCLUDE_DIRS})
-
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -71,8 +69,9 @@ catkin_package(
 ## Your package locations should be listed before other locations
 # include_directories(include)
 include_directories(
+  include
   ${catkin_INCLUDE_DIRS}
-  include/${PROJECT_NAME}/
+  ${PCL_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
@@ -80,7 +79,7 @@ include_directories(
 # )
 
 ## Declare a cpp executable
-add_executable(nav_assistant src/nav_assistant.cpp src/navigation_assistant_3dpc.cpp)
+add_executable(nav_assistant src/nav_assistant_main.cpp src/navigation_assistant_3dpc.cpp)
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(count_pointclouds2_node count_pointclouds2_generate_messages_cpp)
