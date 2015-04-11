@@ -55,8 +55,8 @@ find_package(PCL REQUIRED QUIET COMPONENTS common)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES count_pointclouds2
+   INCLUDE_DIRS include
+   LIBRARIES navigation_assistant_3dpc
 #  CATKIN_DEPENDS geometry_msgs pcl roscpp sensor_msgs
 #  DEPENDS system_lib
 )
@@ -75,17 +75,17 @@ include_directories(
 )
 
 ## Declare a cpp library
-# add_library(count_pointclouds2#   src/${PROJECT_NAME}/count_pcl.cpp
-# )
+add_library(navigation_assistant_3dpc  src/navigation_assistant_3dpc.cpp include/navigation_assistant_3dpc/navigation_assistant_3dpc.h)
 
 ## Declare a cpp executable
-add_executable(nav_assistant src/nav_assistant_main.cpp src/navigation_assistant_3dpc.cpp)
+add_executable(nav_assistant src/nav_main.cpp)
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(count_pointclouds2_node count_pointclouds2_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(nav_assistant
+  navigation_assistant_3dpc
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
 )

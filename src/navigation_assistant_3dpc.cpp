@@ -1,5 +1,4 @@
 #include <ros/ros.h>
-
 #include <pcl/conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -13,9 +12,11 @@
 #include <limits>
 #include "navigation_assistant_3dpc/navigation_assistant_3dpc.h"
 
-namespace navigation_assistant_3dpc {
+navigation_assistant_3dpc::NavigationAssistant3DPC::NavigationAssistant3DPC()
+{
+}
 
-NavigationAssistant3DPC::NavigationAssistant3DPC()
+void navigation_assistant_3dpc::NavigationAssistant3DPC::start()
 {
     ros::NodeHandle nh_3dpc_reception;
     ros::NodeHandle nh2_joy_reception;
@@ -71,23 +72,23 @@ NavigationAssistant3DPC::NavigationAssistant3DPC()
 
     // Create subscription
 
-    nh2_joy_reception.setCallbackQueue(&my_callback_queue);
+    nh2_joy_reception.setCallbackQueue(&joy_reception_callback_queue);
 
-    nh3_timers.setCallbackQueue(&my_callback_queue2);
+    nh3_timers.setCallbackQueue(&timers_callback_queue);
 
-    ros::AsyncSpinner spinner(1, &my_callback_queue);
-    ros::AsyncSpinner spinner2(1, &my_callback_queue2);
+    joy_reception_spinner = new ros::AsyncSpinner(1, &joy_reception_callback_queue);
+    timers_spinner = new ros::AsyncSpinner(1, &timers_callback_queue);
 
     // Create a ROS subscriber for the input point cloud
 
-    ros::Subscriber sub = nh_3dpc_reception.subscribe ("/points2", 1,  &NavigationAssistant3DPC::update_with_cloud, this);
+    subscriber_3dpc = nh_3dpc_reception.subscribe ("/points2", 1,  &NavigationAssistant3DPC::update_with_cloud, this);
 
-    ros::Subscriber sub2 = nh2_joy_reception.subscribe ("/cmd_vel_pre", 1, &NavigationAssistant3DPC::correct_joy_command, this);
-    vel_pub_ = nh2_joy_reception.advertise<geometry_msgs::Twist>("cmd_vel", 1);
-    ros::Timer timer = nh3_timers.createTimer(ros::Duration((double)1/freq),
-                                       &NavigationAssistant3DPC::apply_acceleration, this);
-    ros::Timer timer2 = nh3_timers.createTimer(ros::Duration(t_update_vj),
-                                       &NavigationAssistant3DPC::update_previous_velocity, this);
+    subscriber_joy_command = nh2_joy_reception.subscribe ("/cmd_vel_pre", 1, &NavigationAssistant3DPC::correct_joy_command, this);
+    vel_cmd_pub = nh2_joy_reception.advertise<geometry_msgs::Twist>("cmd_vel", 1);
+    apply_acceleration_timer = new ros::Timer(nh3_timers.createTimer(ros::Duration((double)1/freq),
+                                       &NavigationAssistant3DPC::apply_acceleration, this));
+    previous_vj_update_timer = new ros::Timer(nh3_timers.createTimer(ros::Duration(t_update_vj),
+                                       &NavigationAssistant3DPC::update_previous_velocity, this));
 
     // Start spinners
 
@@ -108,15 +109,12 @@ NavigationAssistant3DPC::NavigationAssistant3DPC()
                     "Interpolation Factor                : " << interp_factor            << std::endl <<
                     "=============================================================="     << std::endl);
 
-
-    ticks = 0;
-
-    spinner.start();
-    spinner2.start();
+    joy_reception_spinner->start();
+    timers_spinner->start();
 
 }
 
-void NavigationAssistant3DPC::apply_acceleration(const ros::TimerEvent& t_event) {
+void navigation_assistant_3dpc::NavigationAssistant3DPC::apply_acceleration(const ros::TimerEvent& t_event) {
 
     ros::Duration t_dif = t_event.current_real - t_event.current_expected;
     double t = ((double)1/freq) + t_dif.toSec();
@@ -135,7 +133,7 @@ void NavigationAssistant3DPC::apply_acceleration(const ros::TimerEvent& t_event)
             last_updated_vj = 0;
         }
 
-        send_joy_command(last_updated_vj, last_wj);
+        send_vel_command(last_updated_vj, last_wj);
 
         if (verbose) {
             ROS_INFO(" DECREASING SPEED to %lf", last_updated_vj);
@@ -145,13 +143,13 @@ void NavigationAssistant3DPC::apply_acceleration(const ros::TimerEvent& t_event)
 }
 
 
-void NavigationAssistant3DPC::update_previous_velocity(const ros::TimerEvent& t_event) {
+void navigation_assistant_3dpc::NavigationAssistant3DPC::update_previous_velocity(const ros::TimerEvent& t_event) {
 
     (void)t_event;
     previous_vj = last_vj;
 }
 
-double NavigationAssistant3DPC::interpolate_dcoll(double k, std::map<double,double> *m) {
+double navigation_assistant_3dpc::NavigationAssistant3DPC::interpolate_dcoll(double k, std::map<double,double> *m) {
 
     double klow, kupper, res;
 
@@ -181,7 +179,7 @@ double NavigationAssistant3DPC::interpolate_dcoll(double k, std::map<double,doub
 
 
 
-void NavigationAssistant3DPC::correct_joy_command (const geometry_msgs::TwistStampedConstPtr& input)
+void navigation_assistant_3dpc::NavigationAssistant3DPC::correct_joy_command (const geometry_msgs::TwistStampedConstPtr& input)
 {
     double kj, sj, v_max, vj, wj;
 
@@ -201,7 +199,7 @@ void NavigationAssistant3DPC::correct_joy_command (const geometry_msgs::TwistSta
     sj = interpolate_dcoll(kj, p_d_coll) - dist_axis_border;
 
     v_max = calculate_v_max(sj);
-    send_joy_command(v_max, wj);
+    send_vel_command(v_max, wj);
 
     if (v_max < vj) {
         distance_to_start_brakes = 0;
@@ -215,15 +213,15 @@ void NavigationAssistant3DPC::correct_joy_command (const geometry_msgs::TwistSta
     last_updated_vj = last_vj;
 
     last_sj = sj;
-    ticks = 0;
 
 }
 
-void NavigationAssistant3DPC::calculate_dcoll(int threadId, const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& input)
+void navigation_assistant_3dpc::NavigationAssistant3DPC::calculate_dcoll(int threadId, const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& input)
 {
     std::map<double,double> *aux;
 
     double x_input, y_input, xp, xc, yp, s, r, k;
+    double k_min_aux = DBL_MIN, k_max_aux;
 
     p_d_coll_pre[threadId]->clear();
 
@@ -257,7 +255,11 @@ void NavigationAssistant3DPC::calculate_dcoll(int threadId, const pcl::PointClou
                 } else {
                     r = xc;
                 }
+
                 k = - 2 * xp / (xp * xp + yp * yp);
+
+                k_max_aux = std::max(k, k_max_aux);
+                k_min_aux = std::min(k, k_min_aux);
 
                 if (xp > 0) {
                     if (xp > xc) {
@@ -289,11 +291,13 @@ void NavigationAssistant3DPC::calculate_dcoll(int threadId, const pcl::PointClou
     aux = p_d_coll_pre[threadId];
     p_d_coll_pre[threadId] = p_d_coll_pre2[threadId];
     p_d_coll_pre2[threadId] = aux;
+    k_min = k_min_aux;
+    k_max = k_max_aux;
 
     p_d_coll = aux;
 }
 
-double NavigationAssistant3DPC::calculate_v_max(double sj) {
+double navigation_assistant_3dpc::NavigationAssistant3DPC::calculate_v_max(double sj) {
 
     double v_max;
 
@@ -313,7 +317,7 @@ double NavigationAssistant3DPC::calculate_v_max(double sj) {
 
 }
 
-void NavigationAssistant3DPC::send_joy_command(double v_max, double wj)
+void navigation_assistant_3dpc::NavigationAssistant3DPC::send_vel_command(double v_max, double wj)
 {
     geometry_msgs::Twist final_vel;
     final_vel.angular.z = wj;
@@ -325,11 +329,11 @@ void NavigationAssistant3DPC::send_joy_command(double v_max, double wj)
         final_vel.linear.x = -final_vel.linear.x;
     }
 
-    vel_pub_.publish(final_vel);
+    vel_cmd_pub.publish(final_vel);
 }
 
 
-void NavigationAssistant3DPC::update_with_cloud(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& input)
+void navigation_assistant_3dpc::NavigationAssistant3DPC::update_with_cloud(const pcl::PointCloud<pcl::PointXYZ>::ConstPtr& input)
 {
     double kj;
     double sj;
@@ -376,7 +380,7 @@ void NavigationAssistant3DPC::update_with_cloud(const pcl::PointCloud<pcl::Point
     v_max = calculate_v_max(sj);
 
     if (v_max < last_updated_vj) {
-        send_joy_command(v_max, last_wj);
+        send_vel_command(v_max, last_wj);
         distance_to_start_brakes = 0;
     } else {        
         distance_to_start_brakes -= distance_driven_prev;
@@ -398,4 +402,4 @@ void NavigationAssistant3DPC::update_with_cloud(const pcl::PointCloud<pcl::Point
     }
 }
 
-}
+
