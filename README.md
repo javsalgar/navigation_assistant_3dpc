@@ -1,142 +1,92 @@
 # navigation_assistant_3dpc
-ROS Package containing a cloud-based dynamically scalable stereo vision platform based on stereo_image_proc.
+ROS package containing a navigation assistant based on 3D Point Clouds.
 
 ## Overview
-The aim of this ROS Package is to provide a 3D Point Cloud (3DPC) extraction platform using Cloud Computing's main 
-features, especially that of dynamic scalability. This implies that, should the user require faster stereo image 
-processing times, then it is possible to launch more 3D Point Cloud Extractors at runtime to satisfy the demand. On the other
-side, if the user required less computing power, then it is possible to shut down the extractors at runtime without
-having to restart the platform. 
+The aim of this ROS Package is to provide a navigation assistant based on a shared control approach. The user will 
+teleoperate a mobile robot using a joystick and the commands will be adapted in order to avoid collisions. 
 
-This platform uses the stereo_image_proc library (http://wiki.ros.org/stereo_image_proc) for the 3D Point Cloud Extraction,
-and consists of two nodes: the front-end buffer (`stereo_cam_buffer`) and the 3DPC Extractors (extractor_node). In order
-to exploit the parallelism, a pipeline is created. The front-end node receives the stereo stream and scatters it to the 3DPC Extractors in a pipeline fashion. 
+The information from the 3D Point Cloud (3DPC) is used to create a d_coll function that estimates the distance from 
+the robot to an obstacle. This way, a maximum velocity free of collisions can be computed and applied to the robot.
+The navigation assistant will correct the robot's velocity at real time in order to avoid collisions. 
+
+Moreover, in order to deal with delays, in order to correct the navigation at a period T_k some predictions are done using information from the previous T_(k-1)
 
 ## Quick Start
-To begin with, you need to have a calibrated stereo camera running with (at least) the following topics:
+To begin with, you need to have a 3D Point Cloud topic and a joystick command publisher.
 ```
-[/NAMESPACE]/left/image_raw
-[/NAMESPACE]/right/image_raw
-[/NAMESPACE]/left/camera_info
-[/NAMESPACE]/right/camera_info
+[/NAMESPACE]/points2
+[/NAMESPACE]/cmd_vel_pre
 ```
-A minimal architecture would consist of one `stereo_cam_buffer` instance and one `extractor_node` instance. To launch them (in the same machine) use the following commands:
+To start the navigation assistant issue the following command;
 ```
-$ rosrun stereo_cam_buffer buffer
-$ rosrun extractor_node extractor_node.py
+$ rosrun navigation_assistant_3dpc nav_assistant
 ```
-To check that the system is working, you can check if there is activity in the `/points2` topic, where the generated 3DPCs are available:
+To check that the system is working, you can check if there is activity in the `/cmd_vel` topic when the joystick is moved. In this topic the corrected commands will be produced:
 
-`$ rostopic hz /points2`
-
-You can also use visualization tools like `rviz`. Should you require more computing power, you can launch more `extractor_node` instances at runtime:
-
-`$ rosrun extractor_node extractor_node.py`
-
-## Cloud execution
-If you have a cloud (or a cluster) available, you can execute the architecture using multiple nodes. In order to do so, one of the nodes must be the master. The following example will suppose four machines: `camera.example.com` ,`frontend.example.com`, `extractor1.example.com` and `extractor2.example.com`. camera.example.com will have the stereo camera running, and will be the ROS Master. `frontend.example.com` will have a `stereo_cam_buffer` instance, extractor1.example.com will have one `extractor_node` instance and `extractor2.example.com` will have two `extractor_node` instances. In order to do so, the following commands are necessary:
-
-```
-user@camera:~$ roscore &
-user@camera:~$ <command to launch the camera node>
-
-user@frontend:~$ ROS_MASTER_URI=http://camera.example.com:11311 rosrun stereo_cam_buffer buffer
-
-user@extractor1:~$ ROS_MASTER_URI=http://camera.example.com:11311 rosrun extractor_node extractor_node.py
-
-user@extractor2:~$ ROS_MASTER_URI=http://camera.example.com:11311 rosrun extractor_node extractor_node.py
-```
-
-This example assumes that you have a DNS server that can resolve all the domain names. Otherwise, you will need to
-edit the /etc/hosts file in all the computers. 
+`$ rostopic hz /cmd_vel`
 
 ## Nodes
 
-### Stereo Cam Buffer (`stereo_cam_buffer`)
-This node receives the stereo stream from the camera and scatters it in a round-robin fashion. In other words, it buffers and forwards the stereo frame pairs to have them processed by the 3DPC Extractors. It allows the use of either tcp or udp, together with different compression techniques that the image_transport package offers (raw, theora, compressed). 
+### Navigation Assistant (`nav_assistant`)
+This node, given a joystick command, will produced a collision-free velocity to the robot. In order to do so, it will use the information from the 3D Point Clouds. 
 
 #### Subscribed topics
-##### Left Camera
-* `left/image_raw` (`sensor_msgs/Image`)
 
- Image stream from the left camera
-* `left/camera_info` (`sensor_msgs/CameraInfo`)
+* `/points2` (`sensor_msgs/PointCloud2`)
 
- Metadata from the left camera
+Contains the obstacle information in the form of point cloud. This will be used to produce the d_coll function
 
-##### Right Camera
-* `right/image_raw` (`sensor_msgs/Image`)
+* `/cmd_vel_pre` (`geometry_msgs/TwistStamped`)
 
- Image stream from the right camera
-* `right/camera_info` (`sensor_msgs/CameraInfo`)
-
- Metadata from the right camera
-
-##### Overall 3DPC Extractor management
-* new_3dpc_extractor (`cloud_3dpc_extractor_msgs/New3DPCExtractor`)
- 
-When a new 3DPC Extractor is available, the Stereo Cam Buffer will be notified using this topic.
-
-##### Management of each 3DPC Extractor (there is one of these topics per 3DPC Extractor running) 
-* <3DPC id>/bond (`bond/Status`)
-
-Checks whether the 3DPC Extractor is alive 
+Joystick command from the teleoperator, the one that will be corrected for a safer navigation
 
 #### Published topics
 
-##### Management of each 3DPC Extractor (there is one of these topics per 3DPC Extractor running) 
-* <3DPC Extr. id>/bond (`bond/Status`)
+* `/cmd_vel` (`geometry_msgs/Twist`)
 
-Checks whether the 3DPC Extractor is alive 
-
-##### Stereo frame forwarding  (there is one of these topics per 3DPC Extractor running) 
-
-* `<3DPC Extr. id>/left/image_raw` (`sensor_msgs/Image`)
-
- Forwarded stream to the left camera
-* `<3DPC Extr. id>left/camera_info` (`sensor_msgs/CameraInfo`)
-
- Metadata from the left camera
-
-* `<3DPC Extr. id>right/image_raw` (`sensor_msgs/Image`)
-
-Forwarded stream to the right camera
-
-* `<3DPC Extr. id>right/camera_info` (`sensor_msgs/CameraInfo`)
+Corrected velocity command that is sent back to the robot.
 
 ### Parameters
 
-#### Camera stream reception
+#### Kinematics
 
-* `~use_udp (bool, default=false)`
+* `~a_max (double, default=0.4)`
 
-If enabled, the camera stream is received using the UDP transport protocol.
+Maximum acceleration that the robot can handle
 
-* `~transport (string, default=raw)`
+* `~max_v_max (double, default=0.4)`
 
-Compression mechanism of the camera stream. The options are those allowed by `image_transport` (raw, theora, compressed).
+Maximum linear velocity that the robot can handle
 
-* `~queue_size (int, default=1)`
+* `~reverse_driven (bool, default=false)`
 
-Size of the stereo frame queue (for systems with real time constraints, a value higher than 1 is not recommended) 
+Indicates whether the robot is being driven forward or backwards
 
-* `~approximate_sync (bool, default=false)`
+* `~dist_axis_border (double, default=0)`
+
+Distance of the robot's center of coordinates to its border.
+
+* `~dist_axis_camera (double, default=0)`
+
+Distance of the robot's center of coordinates to its camera.
+
+* `~freq (double, default=10)`
  
-If enabled, the frame synchronization (from left and right cameras) will not be based on exact timestamp but an approximation.
+Frequency in which the navigation assistant applies braking commands.
 
-#### 3DPC Extractor's bond management
-
-* `~check_if_broken (bool, default=true)`
-
-If enabled, the Stereo Cam Buffer will check if the 3DPC Extractors are still alive. If a 3DPC Extractor dies, then no more frames will be sent to that node. 
-
-* `~heartbeat_period (double, default=5.0)`
+* `~t_update_vj (double, default=0.8)`
  
-Bond's heartbeat period (for more information, see bond library's documentation page)
+Time window used for predicitions
 
-* `~heartbeat_timeout (double, default=10.0)`
- 
-Bond's heartbeat timeout (for more information, see bond library's documentation page)
+#### d_coll calculation
+
+* `interp_factor (double, default=0.7)`
+
+Constant used for interpolation. The bigger its value, the less likely a space between two points will be considered an obstacle.
+
+* `far (double, default=50)`
+
+Interpolation constant. The bigger its value, the less likely a space between two points will be considered an obstacle.
 
 #### Profiling
 
@@ -146,91 +96,17 @@ If enabled, time information (communication and processing times) will be saved 
 
 * `~output_filename_proc (string, default=time_buffer_proc.csv)`
 
-Path to the text file where Stereo Cam Buffer's computation times will be written
+Path to the text file where Navigation Assistant's computation times will be written
 
 * `~output_filename_comm (string, default=time_buffer_comm.csv)`
 
-Path to the text where Stereo Cam Buffer's communication times will be written
+Path to the text where Navigation Assistant's communication times will be written
 
-### 3DPC Extractor (`extractor_node`)
-This node is a wrapper of the `stereo_image_proc` library conceived to be replicated as much times as necessary to 
-obtain better 3DPC Extraction processing times. It is also able to communicate with the Stereo Cam Buffer and notify
-whether it is alive or not (so the platform can scale out and back depending on the needs). All 3DPC Extractors will
-share the same /points2 and /disparity topic, so for the subscribed process it will appear as one single stream 
-of 3DPCs. For more information on how the 3DPC extraction is done, please refer to the `stereo_image_proc` documentation. 
+### Verbosity
 
-#### Published topics
+* `~verbose (bool, default=false)`
 
-##### Contact with Stereo Cam Buffer
-
-* `/bond` (`bond/Status)`
-
-Used to communicate status with the Stereo Cam Buffer.
-
-* `/new_3dpc_extractor` (`cloud_3dpc_extractor_msgs/New3DPCExtractor`)
-
-When this node is awake, it will notify the Stereo Cam Buffer.
-
-##### stereo_image_proc topics (please refer to stereo_image_proc documentation for more information)
-
-* `left/image_mono` (`sensor_msgs/Image`)
-* `left/image_rect` (`sensor_msgs/Image`)
-* `left/image_color` (`sensor_msgs/Image`)
-* `left/image_rect_color` (`sensor_msgs/Image`)
-* `right/image_mono` (`sensor_msgs/Image`)
-* `right/image_rect` (`sensor_msgs/Image`)
-* `right/image_color` (`sensor_msgs/Image`)
-* `right/image_rect_color` (`sensor_msgs/Image`)
-* `points` (`sensor_msgs/PointCloud`)
-* `disparity` (`stereo_msgs/DisparityImage`)
-* `points2` (`sensor_msgs/PointCloud2`)
-
-#### Subscribed topics
-
-##### Contact with Stereo Cam Buffer
-
-* `/bond` (`bond/Status)`
-
-Used to communicate status with the Stereo Cam Buffer.
-
-##### stereo_image_proc topics (please refer to `stereo_image_proc` documentation for more information)
-
-* `left/image_raw` (`sensor_msgs/Image`)
-* `left/camera_info` (`sensor_msgs/CameraInfo`)
-* `right/image_raw` (`sensor_msgs/Image`)
-* `right/camera_info` (`sensor_msgs/CameraInfo`)
-
-### Parameters
-
-#### Wrapper
-
-* `~delay (int, default=5)`
- 
-Time to wait before starting the 3DPC Extractor
-
-* `~restore_time (int, default=5)`
- 
-Period T where the bond is restored in case of fail.
-
-* `~heartbeat_period (double, default=5.0)`
- 
-Bond's heartbeat period (for more information, see bond library's documentation page)
-
-* `~heartbeat_timeout (double, default=10.0)`
- 
-Bond's heartbeat timeout (for more information, see bond library's documentation page)
-
-#### `stereo_image_proc` parameters (please refer to `stereo_image_proc` documentation for more information)
-
-* `~prefilter_size` (`int, default: 23`)
-* `~prefilter_cap` (`int, default: 33`)
-* `~correlation_window_size` (`int, default: 41`)
-* `~min_disparity` (`int, default: 44`)
-* `~disparity_range` (`int, default: 64`)
-* `~uniqueness_ratio` (`double, default: 15.0`)
-* `~texture_threshold` (`int, default: 10`)
-* `~speckle_size` (`int, default: 356`)
-* `~speckle_range` (`int, default: 7`)
+Print verbose messages using `ROS_INFO`
 
 ## Docker images
 
