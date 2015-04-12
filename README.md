@@ -110,4 +110,4 @@ Print verbose messages using `ROS_INFO`
 
 ## Docker images
 
-A docker image repository is available with the cloud_3dpc_extractor pre-installed and ready for deployment in any cloud or local system. Please check https://registry.hub.docker.com/u/javsalgar/cloud_3dpc_extractor/
+A docker image repository is available with the cloud_3dpc_extractor pre-installed and ready for deployment in any cloud or local system. Please check https://registry.hub.docker.com/u/javsalgar/navigation_assistant_3dpc/
